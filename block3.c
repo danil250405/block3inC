@@ -1,71 +1,73 @@
-﻿#include <stdio.h>
+﻿#define _CRT_SECURE_NO_WARNINGS
+#include <stdio.h>
 #include <stdlib.h>
 #include <winsock2.h>
 #include <winsock.h>
 #include <ws2tcpip.h>
 #include <windows.h>
 #include <string.h>
+#include <conio.h>
+
 #pragma comment(lib, "Ws2_32.lib")
-#define DEFAULT_BUFLEN 4096 //makro, kde definujeme velkost prijimacieho buffera
+#define DEFAULT_BUFLEN 4096 //makro, kde definujeme velkost prijimacieho buffera 
 #define SCREEN_WIDTH 80
 
 
 // data send with return AisId
-int datasendingforaisid(int odpoved, SOCKET consocket) {
+int datasendingforaisid(int odpoved, SOCKET consocket, FILE* fw) {
 	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-	SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE);
-	char sendbuf[4096]; //buffer (v zasade retazec), kam sa budu ukladat data, ktore chcete posielat
-	int size = 4096;
-	fgets(sendbuf, size, stdin);
-	odpoved = send(consocket, sendbuf, (int)strlen(sendbuf), 0);
-	if (odpoved == SOCKET_ERROR)
+	SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE); //Changing the color of the input to the console
+	CONSOLE_SCREEN_BUFFER_INFO csbi;
+	COORD point;
+
+
+	if (fw == NULL)
 	{
-
-		printf("send failed: %d\n", WSAGetLastError());
-		closesocket(consocket);
-		WSACleanup();
-
+		printf("Error opening file.");
 	}
-	SetConsoleTextAttribute(hConsole, FOREGROUND_RED);
-	printf("Bytes Sent: %ld\n", odpoved);     //vypisanie poctu odoslanych dat
 
-
-	
-	int num = 0;
-	int len = strlen(sendbuf) - 1; // вычисляем длину массива
-	for (int i = 0; i < len; i++) {
-		num = num * 10 + (sendbuf[i] - '0');
-	}
-	return num;
-
-}
-
-
-
-void datasending(int odpoved, SOCKET consocket) {
-	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-		SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE);
-		CONSOLE_SCREEN_BUFFER_INFO csbi;
-		
-		COORD point;
 	char sendbuf[4096]; //buffer (v zasade retazec), kam sa budu ukladat data, ktore chcete posielat
-	int size = 4096;
-	char simvol, koniec;
-	for ( int i = 0; ; i++)
+	int size = 4096, i = 0;
+	char simvol;
+	fprintf(fw, "ME: ");
+	while (1)
 	{
-		GetConsoleScreenBufferInfo(hConsole, &csbi);
+		simvol = _getch(); //Read by character from the console
+		GetConsoleScreenBufferInfo(hConsole, &csbi); // --In these three lines we find the current cursor position in the console and assign a point--
 		point.Y = csbi.dwCursorPosition.Y;
 		point.X = csbi.dwCursorPosition.X;
-		if (point.X == 39)
+		if (point.X == 0) //this if is so that if the user presses the backspace on line 2 or more it will jump to the previous line
+		{
+			point.X = 39;
+			(point.Y)--;
+			SetConsoleCursorPosition(hConsole, point);
+		}
+		else if (point.X == 39) // this if is for the user to enter characters up to the center of the console
 		{
 			point.X = 0;
 			(point.Y)++;
 			SetConsoleCursorPosition(hConsole, point);
+		
 		}
-		simvol = (char)getch();
-		//koniec = getchar();
-		printf("%c", simvol);
-		if ( simvol == '\r')
+		if ((simvol == '\b'))  // this if is to prevent the user from writing it to the Sendbuf when the backspace is clicked
+		{
+			if (i != 0) //this if is to prevent the user from deleting characters already written in the console and to erase previous characters
+			{
+				printf_s("\b \b");
+				i--;
+			}
+			continue;
+		}
+		//fixing the problem when pressing the arrows and tabs
+		if (!(GetAsyncKeyState(VK_LEFT)) && !(GetAsyncKeyState(VK_DOWN)) && !(GetAsyncKeyState(VK_RIGHT)) && !(GetAsyncKeyState(VK_UP)) && !(GetAsyncKeyState(VK_TAB)))
+		{
+			printf("%c", simvol); //Here we display the symbol that the user pressed on the keyboard
+			sendbuf[i] = simvol; //and if he doesn't, we'll write everything to the array
+		
+			i++;
+		}
+
+		if (simvol == '\r') //If the user presses the Enter key the loop will end
 		{
 			sendbuf[i] = '\0';
 			point.X = 0;
@@ -73,84 +75,103 @@ void datasending(int odpoved, SOCKET consocket) {
 			SetConsoleCursorPosition(hConsole, point);
 			break;
 		}
-		else sendbuf[i] = simvol;
-		//printf("%d", i);
+
+
+
 	}
-	//fgets(sendbuf, size, stdin);
+	
+	fprintf(fw, "%s", sendbuf);
 	odpoved = send(consocket, sendbuf, (int)strlen(sendbuf), 0);
 	if (odpoved == SOCKET_ERROR)
 	{
-		
+
 		printf("send failed: %d\n", WSAGetLastError());
 		closesocket(consocket);
 		WSACleanup();
-		
+
 	}
 	SetConsoleTextAttribute(hConsole, FOREGROUND_RED);
 	printf("Bytes Sent: %ld\n", odpoved);     //vypisanie poctu odoslanych dat
-}
-int datareception(int odpoved, SOCKET consocket) {
-	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-	SetConsoleTextAttribute(hConsole, FOREGROUND_GREEN);
-	//--------------
 	
+	int num = 0;
+	int len = strlen(sendbuf) - 1; // вычисляем длину массива
+	for (int i = 0; i < len; i++) //this is a loop to convert our aisId from an array to a single number of type int
+	{
+		num = num * 10 + (sendbuf[i] - '0');
+	}
+	return num;
+
+}
+//datareception for XOR
+int datareceptionforxorsifr(int odpoved, SOCKET consocket, FILE *fw) {
+	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+	SetConsoleTextAttribute(hConsole, FOREGROUND_GREEN); //Changing the color of the input to the console
 	CONSOLE_SCREEN_BUFFER_INFO csbi;
-	GetConsoleScreenBufferInfo(hConsole, &csbi);
+	GetConsoleScreenBufferInfo(hConsole, &csbi);//// --In this line we find the current cursor position in the console --
 	COORD point;
 
-	
-	//------------
 	int recvbuflen = DEFAULT_BUFLEN;
-	char recvbuf[DEFAULT_BUFLEN], proverka [13];
-	char* p;
+	char recvbuf[DEFAULT_BUFLEN], proverka[13];
+	//char* p;
 	odpoved = recv(consocket, recvbuf, recvbuflen, 0);     //funkcia na príjimanie
-	p = strchr(recvbuf, '\n');
-	recvbuf[p - recvbuf + 1] = '\0';
+
+	//p = strchr(recvbuf, '\n'); //calculate the end of the normal array and trim it with \0
+	//recvbuf[p - recvbuf + 1] = '\0';
+
 	point.X = 40;
 	point.Y = csbi.dwCursorPosition.Y;
-	SetConsoleCursorPosition(hConsole, point);
-	int line_len = 0,
-		word_len = 0;
+	SetConsoleCursorPosition(hConsole, point); //put the cursor in the center of the screen
+
 	printf("Morpheus: \n");
 	point.X = 40;
 	(point.Y)++;
 	SetConsoleCursorPosition(hConsole, point);
-	int z = 0;
-	for (int i = 0; i < p - recvbuf + 1; i++)
+
+	int z = 0, line_len = 0, word_len = 0;
+	//From observation, morpheus always says "try again" if you did something wrong,
+	//so I read the last 13 characters of what morpheus outputs and if it says "try again" the function will return 1
+	fprintf(fw, "MORPHEUS: ");
+	for (int i = 0; i < 150; i++)
 	{
-		//pole proverki
-		if ((i + 13) >= (p - recvbuf + 1))
+		recvbuf[i] = recvbuf[i] ^ 55;
+		if ((i + 13) >= 150) //read the last 13 characters of what morpheus outputs and i write this in array "proverka"
 		{
 			proverka[z] = recvbuf[i];
 			z++;
 		}
 		//Vystup
-		if (recvbuf[i] == ' ' || recvbuf[i] == '\t')
+		if (recvbuf[i] == ' ' || recvbuf[i] == '\t') //if the morpheus data element is a space or tabulator, then the word length is zero
 		{
-			if (((word_len + line_len + 1) > 40)) {
-
+			if (((word_len + line_len + 1) > 40))  //if the length of the word + the length of the word already written in the string is more than forty,
+				//then go to the next line and reset the length of the string to zero
+			{
 				(point.Y)++;
 				point.X = 39;
 				SetConsoleCursorPosition(hConsole, point);
+				fprintf(fw, "\n");
 				line_len = 0;
-				if (recvbuf[i + 1] == ' ')
+				if (recvbuf[i + 1] == ' ') //If the next item is a space, we won't print it on the next line.
 				{
 					i++;
 				}
 			}
 			word_len = 0;
 		}
-		else {
+		else //If the item is not a space, then add 1 to the word length. 
+		{
 			word_len++;
-			if ( recvbuf[i + 1] == ' ')
+			if (recvbuf[i + 1] == ' ') //If the next item is a space, then we add 1 to the length of the string.
 			{
 				line_len++;
 			}
 		}
-	putchar(recvbuf[i]);
-	Sleep(1);                
-	line_len++;
+		putchar(recvbuf[i]);
+		fprintf(fw, "%c", recvbuf[i]);
+		//Sleep(1);                
+		line_len++;
 	}
+
+	
 	SetConsoleTextAttribute(hConsole, FOREGROUND_RED);
 	if (odpoved > 0)
 		printf("Bytes received: %d\n", odpoved);     //prisli validne data, vypis poctu
@@ -160,13 +181,229 @@ int datareception(int odpoved, SOCKET consocket) {
 		printf("recv failed with error: %d\n", WSAGetLastError());     //ina chyba
 	proverka[12] = '\0';
 	int intproverka;
-	if ((strcmp(proverka, "Try again...") == 0) || (strcmp(proverka, "try again...") == 0))
+	if ((strcmp(proverka, "Try again...") == 0) || (strcmp(proverka, "try again...") == 0) || (strcmp(proverka, "ry again....") == 0))
 	{
 		intproverka = 1; //If the user entered something incorrectly to the server, the function will return 1
 	}
 	else intproverka = 0;//if the user entered everything correctly on the server, the function will return 0
 	return intproverka;
 }
+
+
+void datasending(int odpoved, SOCKET consocket, FILE *fw) {
+	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+		SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE); //Changing the color of the input to the console
+		CONSOLE_SCREEN_BUFFER_INFO csbi;
+		COORD point;
+
+	
+		if (fw == NULL)
+		{
+			printf("Error opening file.");
+		}
+
+	char sendbuf[4096]; //buffer (v zasade retazec), kam sa budu ukladat data, ktore chcete posielat
+	int size = 4096, i = 0;
+	char simvol;
+	fprintf(fw, "ME: ");
+	while (1)
+	{
+		simvol = _getch(); //Read by character from the console
+		GetConsoleScreenBufferInfo(hConsole, &csbi); // --In these three lines we find the current cursor position in the console and assign a point--
+		point.Y = csbi.dwCursorPosition.Y; 
+		point.X = csbi.dwCursorPosition.X; 
+		if (point.X == 0) //this if is so that if the user presses the backspace on line 2 or more it will jump to the previous line
+		{
+			point.X = 39;
+			(point.Y)--;
+			SetConsoleCursorPosition(hConsole, point);
+		}
+		else if (point.X == 39) // this if is for the user to enter characters up to the center of the console
+		{
+			point.X = 0;
+			(point.Y)++;
+			SetConsoleCursorPosition(hConsole, point);
+		}
+		if ((simvol == '\b'))  // this if is to prevent the user from writing it to the Sendbuf when the backspace is clicked
+		{
+			if (i != 0) //this if is to prevent the user from deleting characters already written in the console and to erase previous characters
+			{
+				printf_s("\b \b");
+				i--;
+			}
+			continue;
+		}
+		//fixing the problem when pressing the arrows and tabs
+		if (!(GetAsyncKeyState(VK_LEFT)) && !(GetAsyncKeyState(VK_DOWN)) && !(GetAsyncKeyState(VK_RIGHT)) && !(GetAsyncKeyState(VK_UP)) &&!(GetAsyncKeyState(VK_TAB)))
+		{
+			printf("%c", simvol); //Here we display the symbol that the user pressed on the keyboard
+			sendbuf[i] = simvol; //and if he doesn't, we'll write everything to the array
+	
+			i++;
+		}
+	
+		if (simvol == '\r') //If the user presses the Enter key the loop will end
+		{
+			sendbuf[i] = '\0';
+			point.X = 0;
+			(point.Y)++;
+			SetConsoleCursorPosition(hConsole, point);
+			break;
+		}
+	}
+	
+	fprintf(fw, "%s", sendbuf);// print in file
+	odpoved = send(consocket, sendbuf, (int)strlen(sendbuf), 0);
+	if (odpoved == SOCKET_ERROR)
+	{
+		
+		printf("send failed: %d\n", WSAGetLastError());
+		closesocket(consocket);
+		WSACleanup();
+		
+	}
+	SetConsoleTextAttribute(hConsole, FOREGROUND_RED);
+	printf("Bytes Sent: %ld\n", odpoved);     //vypisanie poctu odoslanych dat
+}
+
+
+
+void funcforALERT(char arr[])
+{
+	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+	SetConsoleTextAttribute(hConsole, FOREGROUND_RED); //Changing the color of the input to the console
+	int size = strlen(arr);
+
+	char* p = (char*)malloc((size + 1) * sizeof(char));
+
+	if (p == NULL) {  // проверка, была ли выделена память
+		printf("ERORR\n");
+	}
+	char letter;
+	int q = 0;
+	for (int i = 0; i < size; i++)
+	{
+		int w = i + 1;
+		letter = arr[i];
+		int is_prime = 1;
+		for (int n = 2; n < w; n++)
+		{
+			if (w % n == 0 && n != w)
+			{
+				is_prime = 0;
+				break;
+			}
+
+		}
+		if (is_prime == 1 && w != 1)
+		{
+			p[q] = letter;
+			q++;
+			p[q + 1] = '\0';
+		}
+	}
+	printf("Enter '%s': ", p);
+	free(p);
+
+}
+
+
+
+int datareception(int odpoved, SOCKET consocket, int numberofcase, FILE* fw) {
+	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+	SetConsoleTextAttribute(hConsole, FOREGROUND_GREEN); //Changing the color of the input to the console
+	CONSOLE_SCREEN_BUFFER_INFO csbi;
+	GetConsoleScreenBufferInfo(hConsole, &csbi);//// --In this line we find the current cursor position in the console --
+	COORD point;
+
+	int recvbuflen = DEFAULT_BUFLEN ;
+	char recvbuf[DEFAULT_BUFLEN], proverka [13];
+	char* p;
+	odpoved = recv(consocket, recvbuf, recvbuflen, 0);     //funkcia na príjimanie
+
+	p = strchr(recvbuf, '\n'); //calculate the end of the normal array and trim it with \0
+	recvbuf[p - recvbuf + 1] = '\0';
+
+	point.X = 40;
+	point.Y = csbi.dwCursorPosition.Y;
+	SetConsoleCursorPosition(hConsole, point); //put the cursor in the center of the screen
+
+	printf("Morpheus: \n");
+	point.X = 40;
+	(point.Y)++;
+	SetConsoleCursorPosition(hConsole, point);
+	fprintf(fw, "MORPHEUS: ");// writing in file
+	int z = 0, line_len = 0, word_len = 0;
+		//From observation, morpheus always says "try again" if you did something wrong,
+		//so I read the last 13 characters of what morpheus outputs and if it says "try again" the function will return 1
+	for (int i = 0; i < p - recvbuf + 1; i++)
+	{
+		if ((i + 13) >= (p - recvbuf + 1)) //read the last 13 characters of what morpheus outputs and i write this in array "proverka"
+		{
+			proverka[z] = recvbuf[i];
+			z++;
+		}
+		//Vystup
+		if (recvbuf[i] == ' ' || recvbuf[i] == '\t') //if the morpheus data element is a space or tabulator, then the word length is zero
+		{
+			if (((word_len + line_len + 1) > 40))  //if the length of the word + the length of the word already written in the string is more than forty,
+												   //then go to the next line and reset the length of the string to zero
+			{
+				(point.Y)++;
+				point.X = 39;
+				SetConsoleCursorPosition(hConsole, point);
+				line_len = 0;
+				fprintf(fw, "\n");
+				if (recvbuf[i + 1] == ' ') //If the next item is a space, we won't print it on the next line.
+				{
+					i++;
+				}
+			}
+			word_len = 0;
+		}
+		else //If the item is not a space, then add 1 to the word length. 
+		{
+			word_len++;
+			if ( recvbuf[i + 1] == ' ') //If the next item is a space, then we add 1 to the length of the string.
+			{
+				line_len++;
+			}
+		}
+
+	putchar(recvbuf[i]);
+	fprintf(fw, "%c", recvbuf[i]);
+	//Sleep(1);                
+	line_len++;
+	}
+
+
+	
+
+	SetConsoleTextAttribute(hConsole, FOREGROUND_RED);
+	if (odpoved > 0)
+		printf("Bytes received: %d\n", odpoved);     //prisli validne data, vypis poctu
+	else if (odpoved == 0)
+		printf("Connection closed\n");     //v tomto pripade server ukoncil komunikaciu
+	else
+		printf("recv failed with error: %d\n", WSAGetLastError());     //ina chyba
+	if (numberofcase == 12)
+	{
+		funcforALERT(recvbuf);
+
+	}
+	proverka[12] = '\0';
+	int intproverka;
+	if ((strcmp(proverka, "Try again...") == 0) || (strcmp(proverka, "try again...") == 0) || (strcmp(proverka, "ry again....") == 0))
+	{
+		intproverka = 1; //If the user entered something incorrectly to the server, the function will return 1
+	}
+	else intproverka = 0;//if the user entered everything correctly on the server, the function will return 0
+	return intproverka;
+}
+
+
+
+
 int sucetadelenie(int aisid) {
 	int prva = aisid / 100000;
 	int druha = (aisid / 10000) % 10;
@@ -176,25 +413,22 @@ int sucetadelenie(int aisid) {
 	int sesta = aisid % 10;
 	int odpoved;
 	odpoved = (prva + druha + tretia + stvrta + piata) % piata;
-	//printf ("%d", odpoved);
-	//printf("1-%d 2-%d 3-%d 4-%d 5-%d 6-%d", prva, druha, tretia, stvrta, piata, sesta);
 	return odpoved;
 }
+
+
 
 
 
 int main()
 {
 	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-
-	//определенный размер консоли
+	FILE* fw = fopen("output.txt", "w");
+	//size console
 	COORD size = { 80, 40 };
 	SetConsoleScreenBufferSize(hConsole, size);
 	SMALL_RECT windowSize = { 0, 0, size.X - 1, size.Y - 1 };
 	SetConsoleWindowInfo(hConsole, TRUE, &windowSize);
-
-	//int idais = 123611;
-	//sucetadelenie(idais);
 	SetConsoleTextAttribute(hConsole, 7);
 	SetConsoleOutputCP(CP_UTF8);
 	//uvodne nastavovacky
@@ -267,10 +501,7 @@ int main()
 
 	Sleep(250);
 
-
-	
-	
-	for (int w = 0; w < 20; w++)
+	for (int w = 0; 1; w++)
 	{
 
 		switch (w)
@@ -278,8 +509,7 @@ int main()
 		case 0:printf("Enter anything:");
 			break;
 		case 1:printf("\nEnter yours AIS ID: ");
-			int aisid = datasendingforaisid(iResult, ConnectSocket);
-			//printf("%c", aisid);
+			int aisid = datasendingforaisid(iResult, ConnectSocket, fw);
 			break;
 		case 2:printf("\nAsk him what he wants: ");
 			break;
@@ -288,60 +518,56 @@ int main()
 		case 4:printf("\nEnter 753422 : ");
 			break;
 		case 5:	printf("\nEnter the number %d ( this is the sum of\nthe first 5 numbers and the remainder\nof the division by the 5th digit of\nyour AISAID(123611) ) ", sucetadelenie(aisid));
-
-
-
-		default:
 			break;
-		
+		case 6:printf("\nEnter 333222333 : ");
+			break;
+		case 7:printf("\nEnter 123 : ");
+			datasending(iResult, ConnectSocket, fw);
+			datareceptionforxorsifr(iResult, ConnectSocket, fw);
+			break;
+		case 8:printf("In this coordinates Statue of liberty: ");
+			break;
+		case 9:printf("Enter '40': ");
+			break;
+		case 10:printf("Enter '-74': ");
+			break;
+		case 11:printf("Enter 'S.O.L.': ");
+			break;
+		case 12:printf("Enter 'PRIMENUMBER': ");
+			break;
+		case 13:printf("");
+			break;
+		case 14:printf("Enter 'Trinity': ");
+			break;
+		case 15:printf("Enter 'half-duplex': ");
+			break;
+		case 16:printf("Enter 'baud rate': ");
+			break;
+		case 17:return 0;
+			break;
+		default: printf("Something wrong((");
+			break;
 		}
-		if (w!=1)
+		if (w!=1 && w!=7)
 		{
-			datasending(iResult, ConnectSocket);
+			datasending(iResult, ConnectSocket, fw);
 		}
-		if (GetAsyncKeyState(VK_F10)) return 0;
-		if (datareception(iResult, ConnectSocket) == 1)
+		if (w!=7)
 		{
-			w--;
+			if (datareception(iResult, ConnectSocket, w, fw) == 1)
+			{
+				w--;
+			}
 		}
 	}
-	//posielanie
-	
-	//datasending(iResult, ConnectSocket);
-	//prijimanie
-	//datareception(iResult, ConnectSocket);
 	SetConsoleTextAttribute(hConsole, 7);
-	while (1)
-	{
-	
-	}
-	/*//-------------------отправка AIS ID--------------------------
-	printf("\nEnter yours AIS ID: ");
-	datasending(iResult, ConnectSocket);
-	datareception(iResult, ConnectSocket);
-	//----------------------server want something-------------
-	printf("\nAsk him what he wants: ");
-	datasending(iResult, ConnectSocket);
-	datareception(iResult, ConnectSocket);
-	//---------------------------send some numbers(uloha with Sleep and UTF-8)------------------------------------------
-	printf("\nEnter 8484848 : ");
-	datasending(iResult, ConnectSocket);
-	datareception(iResult, ConnectSocket);
-	//---------------------------send some numbers(uloha with colors)------------------------------------------
-	printf("\nEnter 753422 : ");
-	datasending(iResult, ConnectSocket);
-	datareception(iResult, ConnectSocket);
-	//---------------------------sucet aisid a delenie------------------------------------------
-	
-	printf("\nEnter the number %d ( this is the sum of the first 5 numbers and the remainder of the division by the 5th digit of your AISAID(123611) ) ", sucetadelenie(idais));
-	datasending(iResult, ConnectSocket);
-	datareception(iResult, ConnectSocket);
-
-	*/
 	closesocket(ConnectSocket);
 	WSACleanup();
+	fclose(fw);
 	//-----------------------------uloha1---------------------------------------
 
 	//---------------------------------------------------------------------
 	//---------------------------------------------------------------------
+
+	return 0;
 }
